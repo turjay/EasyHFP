@@ -1,124 +1,181 @@
-# 🎧 EasyHFP - Windows Bluetooth Audio Manager
+<p align="center">
+  <img src="easy_hfp.jpeg" alt="EasyHFP Logo" width="140" style="border-radius: 12px;" />
+</p>
+
+# EasyHFP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https.img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg)](https://microsoft.com/windows)
-[![Language](https://img.shields.io/badge/Language-C%23%20%7C%20PowerShell-purple.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg)](https://microsoft.com/windows)
+[![Language](https://img.shields.io/badge/Language-C%23-purple.svg)]()
+[![DPI](https://img.shields.io/badge/DPI-Per--Monitor%20V2-success.svg)]()
 
-**EasyHFP** is a lightweight Windows utility (available as a standalone C# executable and a PowerShell script) designed to solve the infamous **Bluetooth Audio Quality & Profile Freeze** problem on Windows 10 and 11.
-
----
-
-## 🛑 The Problem
-
-When you join a voice call (Discord, Zoom, Teams, Google Meet, etc.) while listening to music or watching a video, Windows automatically switches your Bluetooth headset to the **Hands-Free Telephony (HFP)** profile. 
-
-This causes two major issues:
-1. **Muffled / Low Quality Audio**: Media audio quality drops drastically (mono 8kHz/16kHz bandwidth shared with the microphone).
-2. **Audio Freeze / Dropouts**: When trying to manually toggle HFP off in Device Manager or Windows settings, the Windows Audio Stack (`Audiosrv` / MMDeviceAPI) often freezes or gets stuck in SCO call mode, requiring a full Windows restart or manual Bluetooth toggle.
+EasyHFP is a native, lightweight Windows utility designed to eliminate Bluetooth audio quality degradation and audio stack lockups when switching between the **A2DP Stereo** and **Hands-Free Telephony (HFP)** profiles on Windows 10 and 11.
 
 ---
 
-## ✨ The Solution: How EasyHFP Works
+## Overview & Problem Statement
 
-EasyHFP provides a **one-click or hotkey-driven toggle** to switch your Bluetooth headset between **High Quality A2DP Stereo Mode** and **HFP Microphone/Call Mode** smoothly without freezing your audio stack.
+When voice-enabled applications (such as Discord, Microsoft Teams, Zoom, or Google Meet) capture the default communication input device on Windows, the operating system automatically forces the connected Bluetooth headset into the **Hands-Free Telephony (HFP)** profile.
 
-### 🔬 Technical Architecture
-* **Direct Win32 Service State Management**: Uses `bthprops.cpl` P/Invoke (`BluetoothSetServiceState`) to directly enable or disable the Bluetooth Hands-Free Telephony service class GUID (`0000111e-0000-1000-8000-00805f9b34fb`).
-* **Asymmetric Reconnect Strategy**:
-  * **Enabling HFP (Call Mode)**: Performs a targeted PnP device node reset (`BTHENUM\DEV_<MAC>`) with a 3.5-second buffer to re-negotiate SCO call handles.
-  * **Disabling HFP (Stereo Mode)**: Executes a graceful WinRT Master Bluetooth Radio Soft Toggle (`Windows.Devices.Radios.Radio.SetStateAsync`)—exactly matching the Windows Action Center Bluetooth button—enabling the headset to cleanly release SCO channels and negotiate a fresh A2DP Stereo link.
-* **Config-Based Device Targeting**: Uses a local `config.txt` file to store your headset's MAC address and friendly name, eliminating the need to hardcode device names into scripts.
-* **Rich Visual Feedback**: Features timestamped colored console logs and native Windows Toast & System Tray Balloon Notifications.
+This architecture introduces two primary failure modes:
 
----
+1. **Bandwidth Degradation (Audio Quality Drop):**
+   The Bluetooth link transitions from high-fidelity A2DP Stereo (typically 44.1 kHz / 48 kHz SBC/AAC) to synchronous SCO/eSCO channels (8 kHz / 16 kHz mono bandwidth shared bidirectionally with the microphone). Output audio becomes severely muffled.
 
-## ⚡ Features
-
-- 🎯 **One-Time Interactive Setup**: Scans and lists all paired Bluetooth headsets on first run. Select your headset once and you're good to go.
-- 🤫 **Silent Hotkey Operation**: Runs quietly in the background when invoked via hotkey or desktop shortcut.
-- 🔄 **Reset & Switch Devices**: Run with `--setup` or `-s` anytime to re-configure for a new headset.
-- 🔔 **Windows Toast Notifications**: Displays instant status popups indicating whether HFP is **ENABLED 🎙️** or **DISABLED 🎧**.
-- 🛠️ **Zero Third-Party Dependencies**: Built entirely using native Windows APIs (Win32 P/Invoke & WinRT).
+2. **Audio Stack Freeze & SCO Channel Lockup:**
+   When attempting to manually disable the Hands-Free Telephony service via Device Manager or the Control Panel, the Windows Audio Service (`Audiosrv` / MMDeviceAPI) frequently hangs in a deadlock state. The headset becomes unresponsive or fails to negotiate a clean A2DP link, often requiring a system restart or full Bluetooth adapter cycle.
 
 ---
 
-## 🚀 Quick Start Guide
+## Technical Architecture
 
-### Option 1: Using Compiled `EasyHFP.exe` (Recommended)
+EasyHFP implements a multi-layered transition strategy to cleanly switch Bluetooth audio profiles without causing deadlocks in the Windows audio subsystem.
 
-1. Download or clone this repository.
-2. Double-click `EasyHFP.exe`.
-3. If running for the first time, an interactive console window will list your paired Bluetooth headsets. Enter the number corresponding to your headset (e.g. `1`).
-4. `EasyHFP.exe` saves your choice to `config.txt`.
-5. On subsequent runs, double-clicking `EasyHFP.exe` (or pressing a hotkey) will instantly toggle Hands-Free mode.
-
-### Option 2: Using PowerShell (`Toggle-EasyHFP.ps1`)
-
-Run the script in PowerShell (Administrator recommended for PnP reconnects):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Toggle-EasyHFP.ps1
+```
++-------------------------------------------------------------+
+|                         EasyHFP                             |
+|   (GUI Controller / System Tray Daemon / CLI Automation)   |
++------------------------------+------------------------------+
+                               |
+        +----------------------+----------------------+
+        |                                             |
+        v                                             v
+[ Enabling HFP (Call Mode) ]            [ Disabling HFP (Stereo Mode) ]
+        |                                             |
+  1. Win32 P/Invoke                             1. Win32 P/Invoke
+     BluetoothSetServiceState                      BluetoothSetServiceState
+     (Enable HFP Service GUID)                     (Disable HFP Service GUID)
+        |                                             |
+  2. Native SetupAPI                            2. WinRT Radio Soft-Toggle
+     Targeted PnP Node Reset                       Release SCO Audio Handles
+     (BTHENUM\DEV_<MAC>*)                          (Radio.SetStateAsync)
+        |                                             |
+  3. Clean SCO Handle Acquisition               3. Clean A2DP Link Negotiation
 ```
 
----
-
-## ⌨️ Assigning a Keyboard Shortcut (UAC-Free Hotkey Setup)
-
-Since PnP driver reset requires elevated privileges, running the tool via a standard shortcut can trigger a UAC prompt. The recommended, built-in Windows method to bypass UAC prompts is using **Windows Task Scheduler**:
-
-### Step 1: Create a Scheduled Task
-1. Press `Win + R`, type `taskschd.msc` and hit **Enter**.
-2. Click **Create Task...** on the right panel.
-3. Under the **General** tab:
-   * Name: `EasyHFP_Toggle`
-   * Check **"Run with highest privileges"**.
-4. Under the **Actions** tab:
-   * Click **New...**
-   * Action: **Start a program**
-   * Program/script: `C:\Path\To\EasyHFP.exe`
-   * Click **OK**.
-
-### Step 2: Create Desktop Shortcut & Hotkey
-1. Right-click on your Desktop -> **New** -> **Shortcut**.
-2. Set location to:
-   ```cmd
-   schtasks /run /tn "EasyHFP_Toggle"
-   ```
-3. Name the shortcut `EasyHFP Toggle`.
-4. Right-click the newly created desktop shortcut -> **Properties**.
-5. Click on the **Shortcut key** field and press your preferred hotkey combination (e.g., `Ctrl + Alt + H`).
-6. Click **OK**.
-
-Now pressing `Ctrl + Alt + H` will instantly toggle your headset's Hands-Free mode without any UAC prompts!
+* **Direct Win32 Service State Management:** Utilizes `bthprops.cpl` P/Invoke (`BluetoothSetServiceState`) to programmatically toggle the Bluetooth Hands-Free Telephony service GUID (`0000111e-0000-1000-8000-00805f9b34fb`).
+* **Native SetupAPI Device Node Management:** Directly interfaces with `setupapi.dll` (`SetupDiGetClassDevs`, `SetupDiSetClassInstallParams`, `SetupDiCallClassInstaller`) to reset device nodes in milliseconds without spawning child processes.
+* **WinRT Radio Soft-Toggle:** Emulates the native Windows Action Center Bluetooth toggle via `Windows.Devices.Radios.Radio.SetStateAsync` to cleanly flush active L2CAP audio channels and SCO handles.
+* **Per-Monitor V2 High-DPI Rendering:** Fully DPI-aware application designed for sharp rendering on 1440p (2K) and 4K high-density displays.
 
 ---
 
-## ⚠️ Disclaimer & Warning
+## Key Features
 
-> [!WARNING]
-> During the **HFP -> A2DP (Disabling Hands-Free)** transition, EasyHFP briefly cycles the Windows Master Bluetooth Radio (soft toggle for ~3 seconds). 
-> 
-> * **Active Audio Streams**: If you are currently playing audio in a game, media player, or live streaming software (e.g., OBS Studio, DAW applications), the brief Bluetooth radio cycle may cause a temporary 2-3 second audio pause while your headset reconnects in high-quality A2DP stereo mode.
-> * **Other Bluetooth Devices**: Other connected Bluetooth devices (mice, keyboards) may experience a brief 2-3 second disconnect while the radio toggles.
+* **Desktop Graphical Interface:** Modern dark-theme control panel for profile toggling, device selection, and configuration.
+* **System Tray Daemon:** Low-footprint background process residing in the Windows notification area with dynamic status icons.
+* **Global Keyboard Shortcut (`Ctrl + Alt + H`):** System-wide hotkey listener using Win32 `RegisterHotKey` for instant profile switching during games or fullscreen applications.
+* **Multi-Device Support:** Store multiple headset profiles and switch targets on the fly via the GUI or CLI.
+* **Zero Third-Party Dependencies:** Implemented entirely using native Win32, SetupAPI, and WinRT APIs.
+* **Automation & Scripting Friendly:** Comprehensive CLI flags for Stream Deck, batch files, and third-party automation tools.
 
 ---
 
-## 🛠️ Building from Source
+## Quick Start
 
-### Compiling `Program.cs` via .NET Framework `csc.exe`
+1. Download the latest [`EasyHFP.exe`](EasyHFP.exe) release.
+2. Double-click `EasyHFP.exe` to launch the control panel.
+3. Select your headset from the dropdown and click **Switch Audio Profile** or press **`Ctrl + Alt + H`**.
 
-EasyHFP can be compiled on any Windows machine using the built-in .NET Framework C# compiler:
+---
+
+## Command Line Interface (CLI)
+
+EasyHFP provides a full command-line interface for headless automation, scripting, and macro decks.
+
+### Usage Syntax
 
 ```cmd
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /target:exe /out:EasyHFP.exe /r:"C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.26100.0\Windows.winmd" /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.WindowsRuntime.dll" /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.dll" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll Program.cs
+EasyHFP.exe [ACTION] [OPTIONS]
+```
+
+### Actions
+
+| Action | Alias | Description |
+| :--- | :--- | :--- |
+| *(None)* | | Launches the Graphical User Interface (Default). |
+| `--tray` | `--daemon` | Starts the resident System Tray background service with the global hotkey active. |
+| `--toggle` | `-t` | Toggles the Hands-Free Telephony profile state for the target headset. |
+| `--on` | `--enable` | Forces Hands-Free Telephony ON (Microphone / Call Mode). Idempotent. |
+| `--off` | `--disable` | Forces Hands-Free Telephony OFF (High-Quality A2DP Stereo). Idempotent. |
+| `--status` | | Queries and displays current link status and active audio profile. |
+| `--list` | `-l` | Lists all paired Bluetooth audio devices, MAC addresses, and HFP states. |
+| `--select` | `-s` | Runs an interactive setup wizard to select the default headset. |
+| `--help` | `-h`, `/?` | Displays command-line reference and examples. |
+
+### Options
+
+| Option | Description |
+| :--- | :--- |
+| `--device, -d <MAC\|Name>` | Targets a specific headset instead of the saved default configuration. |
+| `--reconnect-mode, -m <mode>` | Reconnection strategy: `radio` (default), `pnp`, or `none`. |
+| `--silent` | Suppresses exit delay in console outputs. |
+
+### Examples
+
+```cmd
+# Toggle the default headset profile
+EasyHFP.exe --toggle
+
+# Force high-quality stereo mode
+EasyHFP.exe --off
+
+# Target a specific device by friendly name or MAC
+EasyHFP.exe --device "AirPods" --off
+EasyHFP.exe --device 24C406917EC0 --status
+
+# List all paired Bluetooth devices
+EasyHFP.exe --list
+
+# Start in background system tray mode
+EasyHFP.exe --tray
 ```
 
 ---
 
-## 📄 License
+## Reconnection Strategies
 
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
+EasyHFP supports three reconnection modes configured via the GUI, `config.txt`, or the `--reconnect-mode` CLI argument:
+
+* **`radio` (Recommended & Default):** Cycles the master Bluetooth radio for approximately 3 seconds when disabling Hands-Free mode. This ensures the Windows audio engine completely releases locked SCO handles.
+* **`pnp`:** Resets only the target headset's hardware device node (`BTHENUM\DEV_<MAC>*`) via Win32 SetupAPI. Prevents brief disconnects of other Bluetooth peripherals (e.g., mice, keyboards).
+* **`none`:** Modifies the Win32 Bluetooth service state without issuing hardware reset commands.
 
 ---
 
-<p align="center">Made with ❤️ for a better Windows Bluetooth audio experience.</p>
+## Project Structure
+
+```
+EasyHFP/
+├── src/
+│   ├── EasyHFP.csproj    # .NET C# project file
+│   └── Program.cs        # Unified application source (GUI, Tray, CLI, Win32 APIs)
+├── .gitignore            # Git ignore rules
+├── config.txt            # Local configuration store
+├── easy_hfp.jpeg         # Application logo asset
+├── EasyHFP.exe           # Standalone executable binary
+├── LICENSE               # MIT License
+└── README.md             # Technical documentation
+```
+
+---
+
+## Building from Source
+
+EasyHFP can be compiled on any standard Windows 10/11 environment using the built-in .NET Framework compiler (`csc.exe`):
+
+```cmd
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /target:winexe /out:EasyHFP.exe /r:"C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.26100.0\Windows.winmd" /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.WindowsRuntime.dll" /r:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.dll" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll src\Program.cs
+```
+
+Alternatively, build using the modern .NET SDK:
+
+```cmd
+dotnet build src/EasyHFP.csproj -c Release
+```
+
+---
+
+## License
+
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
