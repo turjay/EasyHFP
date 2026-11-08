@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyHFP", "src\EasyHFP.csproj", "{1F3598D8-B519-49C4-A1DF-2F1CF6A65E31}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{4B5B5D38-2C6F-461C-824B-B3B573AA837E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyHFP.Tests", "tests\EasyHFP.Tests\EasyHFP.Tests.csproj", "{2EAEEC98-B869-4493-BC4B-61CE30F572F2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1F3598D8-B519-49C4-A1DF-2F1CF6A65E31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1F3598D8-B519-49C4-A1DF-2F1CF6A65E31}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1F3598D8-B519-49C4-A1DF-2F1CF6A65E31}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1F3598D8-B519-49C4-A1DF-2F1CF6A65E31}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2EAEEC98-B869-4493-BC4B-61CE30F572F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2EAEEC98-B869-4493-BC4B-61CE30F572F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2EAEEC98-B869-4493-BC4B-61CE30F572F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2EAEEC98-B869-4493-BC4B-61CE30F572F2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2EAEEC98-B869-4493-BC4B-61CE30F572F2} = {4B5B5D38-2C6F-461C-824B-B3B573AA837E}
+	EndGlobalSection
+EndGlobal

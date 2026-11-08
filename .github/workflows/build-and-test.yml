@@ -1,0 +1,41 @@
+name: Windows Build & Test CI
+
+on:
+  push:
+    branches: [ "main", "feature/**" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore EasyHFP.sln
+
+    - name: Build Solution
+      run: dotnet build EasyHFP.sln --configuration Release --no-restore
+
+    - name: Run Unit Tests
+      run: dotnet test EasyHFP.sln --configuration Release --no-build --verbosity normal
+
+    - name: Validate NativeProfileSwitch Experiment
+      run: dotnet test experiments/NativeProfileSwitch/NativeProfileSwitch.sln --configuration Release --verbosity normal
+
+    - name: Publish Standalone Executable
+      run: dotnet publish src/EasyHFP.csproj --configuration Release --runtime win-x64 --self-contained false -p:PublishSingleFile=true -o publish
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: EasyHFP-Windows-x64
+        path: publish/

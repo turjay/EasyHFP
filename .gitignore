@@ -1,11 +1,18 @@
 # Local Configuration (Do not commit device specific MAC/Name settings)
 config.txt
 
+# Archived historical implementations, snapshots, and raw hardware logs
+archive/
+experiments/**/logs/
+
 # Build results
 [Bb]in/
 [Oo]bj/
+publish/
+[Tt]est[Rr]esults/
 [Ll]og/
 [Ll]ogs/
+*.log
 *.exe
 *.dll
 *.pdb
@@ -22,9 +29,6 @@ config.txt
 .vs/
 .vscode/
 *.cache
-*.suo
-*.user
-*.userosv
 *.userstyles
 
 # OS generated files
@@ -36,6 +40,8 @@ $RECYCLE.BIN/
 *.msi
 *.msm
 *.msp
+*.dmp
+*.mdmp
 
 # Temporary test scripts
 test_*.ps1
