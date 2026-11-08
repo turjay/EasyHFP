@@ -22,6 +22,9 @@ namespace EasyHFP.UI
         private int _currentStepIndex;
 
         // Shared Wizard Frame Controls
+        private Icon? _windowIcon;
+        private Bitmap? _logoBitmap;
+        private PictureBox _logoPictureBox = null!;
         private Label _stepTitleLabel = null!;
         private Label _stepIndicatorLabel = null!;
         private Panel _step1Panel = null!;
@@ -63,6 +66,7 @@ namespace EasyHFP.UI
         public HeadsetProfileSnapshot? SelectedDeviceSnapshot => _selectedSnapshot;
         public ConfigData WorkingConfig => _workingConfig;
         public int WakeupCount { get; private set; }
+        public Image? HeaderLogoImage => _logoPictureBox?.Image;
 
         public bool AddToStartMenuChecked
         {
@@ -114,19 +118,31 @@ namespace EasyHFP.UI
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Text = "EasyHFP Setup";
-            ClientSize = new Size(448, 360);
+            _windowIcon = AppBranding.CreateWindowIcon();
+            Icon = _windowIcon;
+            ClientSize = new Size(448, 376);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = true;
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
 
+            _logoBitmap = AppBranding.CreateLogoBitmap();
+            _logoPictureBox = new PictureBox
+            {
+                Location = new Point(16, 10),
+                Size = new Size(44, 44),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Black,
+                Image = _logoBitmap
+            };
+
             _stepTitleLabel = new Label
             {
                 Text = "Welcome to EasyHFP",
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold, GraphicsUnit.Point),
-                Location = new Point(16, 14),
-                Size = new Size(320, 24)
+                Location = new Point(68, 20),
+                Size = new Size(272, 24)
             };
 
             _stepIndicatorLabel = new Label
@@ -134,12 +150,12 @@ namespace EasyHFP.UI
                 Text = "Step 1 of 3",
                 ForeColor = SystemColors.GrayText,
                 TextAlign = ContentAlignment.MiddleRight,
-                Location = new Point(340, 18),
+                Location = new Point(340, 24),
                 Size = new Size(92, 18)
             };
 
             // Step Panels (same bounds)
-            var panelLocation = new Point(16, 46);
+            var panelLocation = new Point(16, 62);
             var panelSize = new Size(416, 256);
 
             _step1Panel = new Panel { Location = panelLocation, Size = panelSize };
@@ -154,7 +170,7 @@ namespace EasyHFP.UI
             _backButton = new Button
             {
                 Text = "< Back",
-                Location = new Point(176, 316),
+                Location = new Point(176, 332),
                 Size = new Size(82, 28),
                 UseVisualStyleBackColor = true,
                 Enabled = false
@@ -165,7 +181,7 @@ namespace EasyHFP.UI
             {
                 Text = "Next >",
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point),
-                Location = new Point(264, 316),
+                Location = new Point(264, 332),
                 Size = new Size(82, 28),
                 UseVisualStyleBackColor = true
             };
@@ -184,7 +200,7 @@ namespace EasyHFP.UI
             _cancelButton = new Button
             {
                 Text = "Cancel",
-                Location = new Point(352, 316),
+                Location = new Point(352, 332),
                 Size = new Size(80, 28),
                 UseVisualStyleBackColor = true,
                 DialogResult = DialogResult.Cancel
@@ -198,6 +214,7 @@ namespace EasyHFP.UI
             AcceptButton = _nextOrFinishButton;
             CancelButton = _cancelButton;
 
+            Controls.Add(_logoPictureBox);
             Controls.Add(_stepTitleLabel);
             Controls.Add(_stepIndicatorLabel);
             Controls.Add(_step1Panel);
@@ -207,8 +224,25 @@ namespace EasyHFP.UI
             Controls.Add(_nextOrFinishButton);
             Controls.Add(_cancelButton);
 
+            FormClosed += OnboardingWizardForm_FormClosed;
+
             ResumeLayout(false);
             PerformLayout();
+        }
+
+        private void OnboardingWizardForm_FormClosed(object? sender, FormClosedEventArgs e)
+        {
+            if (_logoBitmap != null)
+            {
+                try { _logoBitmap.Dispose(); } catch { }
+                _logoBitmap = null;
+            }
+
+            if (_windowIcon != null && _windowIcon != SystemIcons.Application)
+            {
+                try { _windowIcon.Dispose(); } catch { }
+                _windowIcon = null;
+            }
         }
 
         private void BuildStep1Panel()

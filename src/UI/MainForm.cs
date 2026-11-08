@@ -35,6 +35,7 @@ namespace EasyHFP.UI
         private (AudioProfileMode profileMode, bool isConnected) _lastTrayIconState = (AudioProfileMode.Unknown, false);
         private bool _trayIconInitialized;
 
+        private Icon? _windowIcon;
         private NotifyIcon? _trayIcon;
         private ContextMenuStrip? _trayMenu;
         private ToolStripMenuItem? _trayToggleMenuItem;
@@ -141,6 +142,8 @@ namespace EasyHFP.UI
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Text = "EasyHFP";
+            _windowIcon = AppBranding.CreateWindowIcon();
+            Icon = _windowIcon;
             ClientSize = new Size(364, 342);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -809,61 +812,13 @@ namespace EasyHFP.UI
 
             try
             {
-                bool isHfpActive = mode == AudioProfileMode.HfpHeldByEasyHfp ||
-                                   mode == AudioProfileMode.HfpHeldByExternalApp;
+                var managedIcon = AppBranding.CreateTrayIcon();
+                var oldIcon = _trayIcon.Icon;
+                _trayIcon.Icon = managedIcon;
 
-                using var bmp = new Bitmap(32, 32);
-                using (var g = Graphics.FromImage(bmp))
+                if (oldIcon != null && oldIcon != SystemIcons.Application && !ReferenceEquals(oldIcon, managedIcon))
                 {
-                    g.SmoothingMode = SmoothingMode.HighQuality;
-                    g.Clear(Color.Transparent);
-
-                    Color bgColor = !isConnected || mode == AudioProfileMode.Disconnected
-                        ? Color.FromArgb(120, 120, 128)
-                        : (isHfpActive ? Color.FromArgb(217, 119, 6) : Color.FromArgb(16, 124, 65));
-
-                    using (var bgBrush = new SolidBrush(bgColor))
-                    {
-                        g.FillEllipse(bgBrush, 2, 2, 28, 28);
-                    }
-
-                    using (var pen = new Pen(Color.FromArgb(40, 40, 48), 2))
-                    {
-                        g.DrawEllipse(pen, 2, 2, 28, 28);
-                    }
-
-                    string glyph = mode switch
-                    {
-                        AudioProfileMode.HfpHeldByEasyHfp => "H",
-                        AudioProfileMode.HfpHeldByExternalApp => "H",
-                        AudioProfileMode.A2dp => "S",
-                        _ => "?"
-                    };
-                    using var font = new Font("Segoe UI", 13, FontStyle.Bold, GraphicsUnit.Pixel);
-                    var size = g.MeasureString(glyph, font);
-                    float x = (32 - size.Width) / 2f;
-                    float y = (32 - size.Height) / 2f;
-                    using var textBrush = new SolidBrush(Color.White);
-                    g.DrawString(glyph, font, textBrush, x, y);
-                }
-
-                IntPtr hIcon = bmp.GetHicon();
-                try
-                {
-                    using var tempIcon = Icon.FromHandle(hIcon);
-                    var managedIcon = (Icon)tempIcon.Clone();
-
-                    var oldIcon = _trayIcon.Icon;
-                    _trayIcon.Icon = managedIcon;
-
-                    if (oldIcon != null && oldIcon != SystemIcons.Application)
-                    {
-                        oldIcon.Dispose();
-                    }
-                }
-                finally
-                {
-                    NativeUser32.DestroyIcon(hIcon);
+                    oldIcon.Dispose();
                 }
             }
             catch (Exception ex)
@@ -986,6 +941,12 @@ namespace EasyHFP.UI
             {
                 _trayMenu.Dispose();
                 _trayMenu = null;
+            }
+
+            if (_windowIcon != null && _windowIcon != SystemIcons.Application)
+            {
+                try { _windowIcon.Dispose(); } catch { }
+                _windowIcon = null;
             }
         }
     }

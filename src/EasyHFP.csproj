@@ -6,6 +6,12 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationIcon>Resources\easyhfp.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\easyhfp.ico" LogicalName="EasyHFP.Resources.easyhfp.ico" />
+    <EmbeddedResource Include="..\easyhfp_logo.png" Link="Resources\easyhfp_logo.png" LogicalName="EasyHFP.Resources.easyhfp_logo.png" />
+  </ItemGroup>
 
 </Project>

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="easy_hfp.jpeg" alt="EasyHFP Logo" width="128" style="border-radius: 12px;" />
+  <img src="easyhfp_logo.png" alt="EasyHFP Logo" width="160" style="border-radius: 12px;" />
 </p>
 
 # EasyHFP

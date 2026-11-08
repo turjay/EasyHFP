@@ -262,6 +262,48 @@ namespace EasyHFP.Tests
             }
         }
 
+        [Fact]
+        public void AppBranding_ProvidesMultiResolutionIcon_AndOfficialLogoInOnboarding()
+        {
+            byte[]? icoBytes = AppBranding.GetEmbeddedIconBytes();
+            Assert.NotNull(icoBytes);
+            Assert.True(icoBytes!.Length > 6 + 7 * 16);
+
+            // ICONDIR header: Reserved=0, Type=1 (ICO), Count=7 (16, 24, 32, 48, 64, 128, 256)
+            Assert.Equal(0, BitConverter.ToUInt16(icoBytes, 0));
+            Assert.Equal(1, BitConverter.ToUInt16(icoBytes, 2));
+            Assert.Equal(7, BitConverter.ToUInt16(icoBytes, 4));
+
+            int[] expectedSizes = { 16, 24, 32, 48, 64, 128, 256 };
+            for (int i = 0; i < expectedSizes.Length; i++)
+            {
+                int entryOffset = 6 + (i * 16);
+                int width = icoBytes[entryOffset] == 0 ? 256 : icoBytes[entryOffset];
+                int height = icoBytes[entryOffset + 1] == 0 ? 256 : icoBytes[entryOffset + 1];
+                Assert.Equal(expectedSizes[i], width);
+                Assert.Equal(expectedSizes[i], height);
+            }
+
+            using var icon16 = AppBranding.CreateIconForSize(16);
+            Assert.Equal(16, icon16.Width);
+            Assert.Equal(16, icon16.Height);
+
+            using var logo = AppBranding.CreateLogoBitmap();
+            Assert.NotNull(logo);
+            Assert.Equal(logo!.Width, logo.Height);
+
+            string configPath = Path.Combine(_tempDir, "config_logo.json");
+            string shortcutPath = Path.Combine(_tempDir, "Programs", "EasyHFP.lnk");
+            using var wizard = new OnboardingWizardForm(
+                new FakeBluetoothService(),
+                new ConfigurationService(configPath),
+                new StartMenuShortcutService(shortcutPath),
+                new SpyAudioProfileController());
+
+            Assert.NotNull(wizard.HeaderLogoImage);
+            Assert.NotNull(wizard.Icon);
+        }
+
         public void Dispose()
         {
             try
