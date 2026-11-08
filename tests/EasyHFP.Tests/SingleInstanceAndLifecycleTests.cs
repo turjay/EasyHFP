@@ -57,9 +57,12 @@ namespace EasyHFP.Tests
         [Fact]
         public void MainForm_StartInTray_RemainsHiddenWithCreatedHandle_AndRestoresAndExitsCleanly()
         {
-            string configPath = Path.Combine(_tempDir, "config.txt");
+            string configPath = Path.Combine(_tempDir, "config.json");
+            string shortcutPath = Path.Combine(_tempDir, "EasyHFP.lnk");
             var configService = new ConfigurationService(configPath);
+            var shortcutService = new StartMenuShortcutService(shortcutPath);
             var config = configService.LoadConfig();
+            config.SetupCompleted = true;
             config.MinimizeToTray = true;
             config.ShowNotifications = false;
             config.Hotkey = ""; // Avoid global hotkey conflict during unit test
@@ -75,7 +78,7 @@ namespace EasyHFP.Tests
                 HfpState = HfpServiceState.Disabled
             });
 
-            using var form = new MainForm(fakeBt, configService, startInTray: true);
+            using var form = new MainForm(fakeBt, configService, startInTray: true, shortcutService: shortcutService);
 
             // Simulate WinForms Application.Run attempting to show the form
             form.Show();

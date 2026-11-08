@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using EasyHFP.Models;
 using Microsoft.Win32;
 
@@ -15,6 +16,7 @@ namespace EasyHFP.Services
         void SaveConfig(ConfigData config);
         bool IsAutoStartEnabled();
         void SetAutoStart(bool enable);
+        bool RepairAutoStartIfStale(bool startWithWindowsPreference);
         string NormalizeMac(string mac);
     }
 
@@ -23,7 +25,16 @@ namespace EasyHFP.Services
         public const string DefaultRunRegistrySubKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         public const string AutoStartValueName = "EasyHFP";
 
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            WriteIndented = true,
+            PropertyNameCaseInsensitive = true,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true
+        };
+
         private readonly string _configFilePath;
+        private readonly string _appDataLegacyConfigFilePath;
         private readonly string _legacyConfigFilePath;
         private readonly string _runRegistryKeyPath;
         private readonly string? _customExecutablePath;
@@ -39,12 +50,16 @@ namespace EasyHFP.Services
             if (!string.IsNullOrWhiteSpace(customPath))
             {
                 _configFilePath = customPath;
+                _appDataLegacyConfigFilePath = customPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                    ? Path.Combine(Path.GetDirectoryName(customPath) ?? string.Empty, "config.txt")
+                    : string.Empty;
                 _legacyConfigFilePath = legacyPath ?? string.Empty;
             }
             else
             {
                 string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "EasyHFP");
-                _configFilePath = Path.Combine(appDataDir, "config.txt");
+                _configFilePath = Path.Combine(appDataDir, "config.json");
+                _appDataLegacyConfigFilePath = Path.Combine(appDataDir, "config.txt");
                 _legacyConfigFilePath = legacyPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt");
             }
 
@@ -74,45 +89,152 @@ namespace EasyHFP.Services
 
         public ConfigData LoadConfig()
         {
-            var config = new ConfigData();
-
             try
             {
-                // Migration: If user config does not exist in AppData, check legacy location in app directory
-                if (!File.Exists(_configFilePath) && !string.IsNullOrEmpty(_legacyConfigFilePath) && File.Exists(_legacyConfigFilePath))
+                if (File.Exists(_configFilePath))
                 {
+                    return LoadExistingConfigFile(_configFilePath);
+                }
+
+                string? legacyCandidate = FindExistingLegacyConfigPath();
+                if (!string.IsNullOrEmpty(legacyCandidate))
+                {
+                    var migrated = ParseLegacyConfigFile(legacyCandidate);
+                    migrated.StartWithWindows = IsAutoStartEnabled();
+                    migrated.SetupCompleted = IsValidMac(migrated.DefaultMac);
+
                     try
                     {
-                        string dir = Path.GetDirectoryName(_configFilePath)!;
-                        if (!Directory.Exists(dir))
-                        {
-                            Directory.CreateDirectory(dir);
-                        }
-                        File.Copy(_legacyConfigFilePath, _configFilePath, true);
-                        AppLogger.Info($"Migrated legacy configuration from '{_legacyConfigFilePath}' to '{_configFilePath}'.");
+                        SaveConfig(migrated);
+                        AppLogger.Info(
+                            $"Migrated legacy configuration from '{legacyCandidate}' to '{_configFilePath}' " +
+                            $"(setupCompleted={migrated.SetupCompleted}). Original legacy file preserved.");
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Warn($"Could not copy legacy config to AppData ({ex.Message}); reading legacy path directly.");
-                        return ParseConfigFile(_legacyConfigFilePath);
+                        AppLogger.Warn($"Could not persist migrated config to '{_configFilePath}' ({ex.Message}); using migrated settings in memory.");
                     }
+
+                    return migrated;
                 }
 
-                if (!File.Exists(_configFilePath))
-                {
-                    return config;
-                }
-
-                return ParseConfigFile(_configFilePath);
+                return new ConfigData();
             }
             catch (Exception ex)
             {
                 AppLogger.Error($"Failed to load configuration from '{_configFilePath}'. Using safe defaults.", ex);
-                return config;
+                return new ConfigData();
             }
         }
 
-        private ConfigData ParseConfigFile(string filePath)
+        private string? FindExistingLegacyConfigPath()
+        {
+            if (!string.IsNullOrWhiteSpace(_legacyConfigFilePath) && File.Exists(_legacyConfigFilePath))
+            {
+                return _legacyConfigFilePath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_appDataLegacyConfigFilePath) &&
+                !string.Equals(_appDataLegacyConfigFilePath, _configFilePath, StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(_appDataLegacyConfigFilePath))
+            {
+                return _appDataLegacyConfigFilePath;
+            }
+
+            return null;
+        }
+
+        private ConfigData LoadExistingConfigFile(string filePath)
+        {
+            string rawContent = File.ReadAllText(filePath, Encoding.UTF8);
+            string trimmed = rawContent.TrimStart();
+
+            if (trimmed.StartsWith("{", StringComparison.Ordinal))
+            {
+                try
+                {
+                    var parsed = JsonSerializer.Deserialize<ConfigData>(rawContent, JsonOptions);
+                    if (parsed == null)
+                    {
+                        AppLogger.Warn($"Configuration file '{filePath}' deserialized to null; using safe defaults.");
+                        return new ConfigData();
+                    }
+
+                    return SanitizeLoadedConfig(parsed);
+                }
+                catch (JsonException ex)
+                {
+                    AppLogger.Warn($"Malformed JSON in configuration file '{filePath}': {ex.Message}. Falling back to safe defaults.");
+                    return new ConfigData();
+                }
+            }
+
+            // If a legacy .txt file path was loaded directly, parse KEY=VALUE lines; if a .json file has non-JSON content, treat as malformed JSON.
+            if (filePath.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+            {
+                return ParseLegacyConfigFile(filePath);
+            }
+
+            AppLogger.Warn($"Configuration file '{filePath}' does not contain valid JSON. Falling back to safe defaults.");
+            return new ConfigData();
+        }
+
+        private ConfigData SanitizeLoadedConfig(ConfigData config)
+        {
+            config.SchemaVersion = config.SchemaVersion <= 0 ? ConfigData.CurrentSchemaVersion : config.SchemaVersion;
+            config.Preferences ??= new UserPreferences();
+
+            string candidateMac = NormalizeMac(config.SelectedDeviceId);
+            if (!string.IsNullOrEmpty(candidateMac) && !IsValidMac(candidateMac))
+            {
+                AppLogger.Warn($"Ignored invalid selectedDeviceId in JSON config: '{config.SelectedDeviceId}'.");
+                candidateMac = string.Empty;
+            }
+            config.SelectedDeviceId = candidateMac;
+
+            if (string.IsNullOrWhiteSpace(config.SelectedDeviceName))
+            {
+                config.SelectedDeviceName = "Bluetooth Headset";
+            }
+            else
+            {
+                config.SelectedDeviceName = config.SelectedDeviceName.Trim();
+            }
+
+            if (ReconnectModeExtensions.TryParseReconnectMode(config.ReconnectMode ?? "auto", out var parsedMode))
+            {
+                config.ReconnectMode = parsedMode.ToConfigString();
+            }
+            else
+            {
+                config.ReconnectMode = "auto";
+            }
+
+            config.Hotkey = string.IsNullOrWhiteSpace(config.Hotkey) ? "Ctrl+Alt+H" : config.Hotkey.Trim();
+
+            var cleanKnownDevices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (config.KnownDevices != null)
+            {
+                foreach (var kvp in config.KnownDevices)
+                {
+                    string normKey = NormalizeMac(kvp.Key);
+                    if (IsValidMac(normKey) && !string.IsNullOrWhiteSpace(kvp.Value))
+                    {
+                        cleanKnownDevices[normKey] = kvp.Value.Trim();
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(config.SelectedDeviceId) && !cleanKnownDevices.ContainsKey(config.SelectedDeviceId))
+            {
+                cleanKnownDevices[config.SelectedDeviceId] = config.SelectedDeviceName;
+            }
+
+            config.KnownDevices = cleanKnownDevices;
+            return config;
+        }
+
+        private ConfigData ParseLegacyConfigFile(string filePath)
         {
             var config = new ConfigData();
             string[] lines = File.ReadAllLines(filePath);
@@ -229,43 +351,49 @@ namespace EasyHFP.Services
             try
             {
                 string dir = Path.GetDirectoryName(_configFilePath)!;
-                if (!Directory.Exists(dir))
+                if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
                 }
 
-                string normalizedDefaultMac = NormalizeMac(config.DefaultMac);
+                var toSave = config.Clone();
+                toSave.SchemaVersion = ConfigData.CurrentSchemaVersion;
+
+                string normalizedDefaultMac = NormalizeMac(toSave.DefaultMac);
                 if (!string.IsNullOrEmpty(normalizedDefaultMac) && !IsValidMac(normalizedDefaultMac))
                 {
                     normalizedDefaultMac = string.Empty;
                 }
+                toSave.DefaultMac = normalizedDefaultMac;
 
-                string validReconnectMode = ReconnectModeExtensions.TryParseReconnectMode(config.ReconnectMode, out var parsedMode)
+                if (string.IsNullOrWhiteSpace(toSave.DefaultName))
+                {
+                    toSave.DefaultName = "Bluetooth Headset";
+                }
+
+                toSave.ReconnectMode = ReconnectModeExtensions.TryParseReconnectMode(toSave.ReconnectMode, out var parsedMode)
                     ? parsedMode.ToConfigString()
                     : "auto";
 
-                string validHotkey = string.IsNullOrWhiteSpace(config.Hotkey) ? "Ctrl+Alt+H" : config.Hotkey.Trim();
+                toSave.Hotkey = string.IsNullOrWhiteSpace(toSave.Hotkey) ? "Ctrl+Alt+H" : toSave.Hotkey.Trim();
 
-                var sb = new StringBuilder();
-                sb.AppendLine("# EasyHFP Configuration File");
-                sb.AppendLine($"# Generated on {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                sb.AppendLine();
-                sb.AppendLine($"MAC={normalizedDefaultMac}");
-                sb.AppendLine($"NAME={config.DefaultName}");
-                sb.AppendLine($"RECONNECT_MODE={validReconnectMode}");
-                sb.AppendLine($"SHOW_NOTIFICATIONS={config.ShowNotifications.ToString().ToLowerInvariant()}");
-                sb.AppendLine($"MINIMIZE_TO_TRAY={config.MinimizeToTray.ToString().ToLowerInvariant()}");
-                sb.AppendLine($"HOTKEY={validHotkey}");
-                sb.AppendLine();
-                sb.AppendLine("[DEVICES]");
-                foreach (var kvp in config.KnownDevices)
+                var cleanDevices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kvp in toSave.KnownDevices)
                 {
                     string normKey = NormalizeMac(kvp.Key);
-                    if (IsValidMac(normKey))
+                    if (IsValidMac(normKey) && !string.IsNullOrWhiteSpace(kvp.Value))
                     {
-                        sb.AppendLine($"{normKey}={kvp.Value}");
+                        cleanDevices[normKey] = kvp.Value.Trim();
                     }
                 }
+
+                if (!string.IsNullOrEmpty(toSave.DefaultMac) && !cleanDevices.ContainsKey(toSave.DefaultMac))
+                {
+                    cleanDevices[toSave.DefaultMac] = toSave.DefaultName;
+                }
+                toSave.KnownDevices = cleanDevices;
+
+                string json = JsonSerializer.Serialize(toSave, JsonOptions);
 
                 // Atomic write: write to process-unique temp file, then move/overwrite target
                 string tempFile = $"{_configFilePath}.tmp.{Environment.ProcessId}.{Guid.NewGuid():N}";
@@ -273,7 +401,7 @@ namespace EasyHFP.Services
                 {
                     try
                     {
-                        File.WriteAllText(tempFile, sb.ToString(), Encoding.UTF8);
+                        File.WriteAllText(tempFile, json, Encoding.UTF8);
                         File.Move(tempFile, _configFilePath, overwrite: true);
                     }
                     finally
@@ -345,6 +473,21 @@ namespace EasyHFP.Services
             }
 
             return exePath;
+        }
+
+        public bool HasAutoStartRegistryValue()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(_runRegistryKeyPath, false);
+                if (key == null) return false;
+                string? rawValue = key.GetValue(AutoStartValueName) as string;
+                return !string.IsNullOrWhiteSpace(rawValue);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public bool IsAutoStartEnabled()
@@ -424,6 +567,30 @@ namespace EasyHFP.Services
                 AppLogger.Error("Failed to update Windows startup registration.", ex);
                 throw new InvalidOperationException($"Failed to update Windows auto-start registry entry: {ex.Message}", ex);
             }
+        }
+
+        public bool RepairAutoStartIfStale(bool startWithWindowsPreference)
+        {
+            if (!startWithWindowsPreference)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (HasAutoStartRegistryValue() && !IsAutoStartEnabled())
+                {
+                    SetAutoStart(true);
+                    AppLogger.Info("Updated stale Windows startup registry entry to current executable path.");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"Could not repair stale Windows startup registry entry: {ex.Message}");
+            }
+
+            return false;
         }
     }
 }

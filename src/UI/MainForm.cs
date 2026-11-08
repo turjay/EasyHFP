@@ -15,6 +15,7 @@ namespace EasyHFP.UI
     {
         private readonly IBluetoothService _bluetoothService;
         private readonly IConfigurationService _configService;
+        private readonly IStartMenuShortcutService _shortcutService;
         private readonly IAudioProfileController _profileController;
         private readonly bool _ownsProfileController;
 
@@ -56,6 +57,7 @@ namespace EasyHFP.UI
         private GroupBox _settingsGroup = null!;
         private CheckBox _autoStartCheck = null!;
         private CheckBox _minToTrayCheck = null!;
+        private CheckBox _startMenuCheck = null!;
         private CheckBox _toastCheck = null!;
         private Label _hotkeyInfoLabel = null!;
 
@@ -63,10 +65,12 @@ namespace EasyHFP.UI
             IBluetoothService bluetoothService,
             IConfigurationService configService,
             bool startInTray,
-            IAudioProfileController? profileController = null)
+            IAudioProfileController? profileController = null,
+            IStartMenuShortcutService? shortcutService = null)
         {
             _bluetoothService = bluetoothService ?? throw new ArgumentNullException(nameof(bluetoothService));
             _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+            _shortcutService = shortcutService ?? new StartMenuShortcutService();
             _ownsProfileController = (profileController == null);
             _profileController = profileController ?? new WindowsAudioProfileController();
             _profileController.ProfileStateChanged += OnControllerProfileStateChanged;
@@ -137,7 +141,7 @@ namespace EasyHFP.UI
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Text = "EasyHFP";
-            ClientSize = new Size(364, 316);
+            ClientSize = new Size(364, 342);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             MinimizeBox = true;
@@ -232,7 +236,7 @@ namespace EasyHFP.UI
             {
                 Text = "Settings",
                 Location = new Point(14, 194),
-                Size = new Size(336, 104)
+                Size = new Size(336, 130)
             };
 
             _autoStartCheck = new CheckBox
@@ -259,10 +263,20 @@ namespace EasyHFP.UI
                 TrySaveConfig();
             };
 
+            _startMenuCheck = new CheckBox
+            {
+                Text = "Add to Windows Start search",
+                Location = new Point(12, 50),
+                Size = new Size(312, 20),
+                UseVisualStyleBackColor = true,
+                Checked = _shortcutService.IsShortcutValidForCurrentExecutable()
+            };
+            _startMenuCheck.CheckedChanged += StartMenuCheck_CheckedChanged;
+
             _toastCheck = new CheckBox
             {
                 Text = "Show desktop notifications on switch",
-                Location = new Point(12, 50),
+                Location = new Point(12, 76),
                 Size = new Size(312, 20),
                 UseVisualStyleBackColor = true,
                 Checked = _config.ShowNotifications
@@ -278,13 +292,14 @@ namespace EasyHFP.UI
                 Text = $"Global shortcut: {_config.Hotkey}",
                 ForeColor = SystemColors.GrayText,
                 Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point),
-                Location = new Point(12, 76),
+                Location = new Point(12, 102),
                 Size = new Size(312, 16),
                 AutoEllipsis = true
             };
 
             _settingsGroup.Controls.Add(_autoStartCheck);
             _settingsGroup.Controls.Add(_minToTrayCheck);
+            _settingsGroup.Controls.Add(_startMenuCheck);
             _settingsGroup.Controls.Add(_toastCheck);
             _settingsGroup.Controls.Add(_hotkeyInfoLabel);
 
@@ -309,6 +324,8 @@ namespace EasyHFP.UI
             try
             {
                 _configService.SetAutoStart(_autoStartCheck.Checked);
+                _config.StartWithWindows = _autoStartCheck.Checked;
+                TrySaveConfig();
                 SetStatusMessage(_autoStartCheck.Checked ? "Startup with Windows enabled." : "Startup with Windows disabled.", isError: false);
             }
             catch (Exception ex)
@@ -318,6 +335,25 @@ namespace EasyHFP.UI
                 _autoStartCheck.Checked = _configService.IsAutoStartEnabled();
                 _autoStartCheck.CheckedChanged += AutoStartCheck_CheckedChanged;
                 SetStatusMessage("Could not update Windows startup setting.", isError: true);
+            }
+        }
+
+        private void StartMenuCheck_CheckedChanged(object? sender, EventArgs e)
+        {
+            try
+            {
+                _shortcutService.SetShortcutEnabled(_startMenuCheck.Checked);
+                _config.AddToStartMenu = _startMenuCheck.Checked;
+                TrySaveConfig();
+                SetStatusMessage(_startMenuCheck.Checked ? "Added EasyHFP to Windows Start search." : "Removed EasyHFP from Windows Start search.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Failed to toggle Start Menu shortcut.", ex);
+                _startMenuCheck.CheckedChanged -= StartMenuCheck_CheckedChanged;
+                _startMenuCheck.Checked = _shortcutService.IsShortcutValidForCurrentExecutable();
+                _startMenuCheck.CheckedChanged += StartMenuCheck_CheckedChanged;
+                SetStatusMessage("Could not update Windows Start Menu shortcut.", isError: true);
             }
         }
 

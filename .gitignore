@@ -1,5 +1,6 @@
 # Local Configuration (Do not commit device specific MAC/Name settings)
 config.txt
+config.json
 
 # Archived historical implementations, snapshots, and raw hardware logs
 archive/

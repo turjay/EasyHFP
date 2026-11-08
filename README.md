@@ -23,33 +23,38 @@ EasyHFP provides a simple one-click control and global shortcut to request the m
 
 - One-click switching between A2DP and HFP
 - No Bluetooth adapter restart during normal switching
-- Lightweight Windows system tray utility
-- Global keyboard shortcut: `Ctrl+Alt+H`
-- Start with Windows (`--tray` background mode)
+- Guided first-run setup for headset selection and Windows integration
+- Windows Start search integration (per-user Start Menu shortcut, enabled by default)
+- Optional Start with Windows (`--tray` background mode, disabled by default)
+- Lightweight Windows system tray utility with global shortcut (`Ctrl+Alt+H`)
 - No administrator privileges required for normal WASAPI operation
 - Uses native Windows Core Audio APIs
 - Does not save, record, or transmit microphone audio
 
 ## Screenshot
 
-The main window provides a compact device selector, connection and active mode status, a single switch button, and basic tray/startup preferences.
+The main window provides a compact device selector, connection and active mode status, a single switch button, and basic tray/startup/Start Menu preferences.
 
 *(Documentation note: Capture the main utility window and save it to [`assets/screenshot.png`](assets/README.md) when preparing the next visual update.)*
 
 ## Download
 
-Check the [GitHub Releases](https://github.com/turjay/EasyHFP/releases) page for packaged builds. Until a new release is published for the current .NET 8 WASAPI implementation, please build the application from source using the instructions below.
+This repository is **source-only** and does not track compiled `.exe` or `.dll` binaries in Git. Distributable builds are published separately on the [GitHub Releases](https://github.com/turjay/EasyHFP/releases) page, or you can build directly from source using the instructions below.
 
-## Usage
+## First-Run Setup & Usage
 
 1. Connect a compatible Bluetooth Classic headset to Windows.
 2. Launch `EasyHFP.exe`.
-3. Select your headset from the device dropdown.
+3. On first launch, the **EasyHFP Setup** wizard guides you through three quick steps:
+   - **Select Headset:** Pick your preferred Bluetooth headset and verify that its Stereo (A2DP) and Hands-Free (HFP) audio endpoints are detected.
+   - **Preferences:** Choose whether to add EasyHFP to **Windows Start search** (enabled by default), **Launch EasyHFP when Windows starts** (disabled by default), close to the system tray, and show desktop notifications.
+   - **Finish:** Save your settings to `%APPDATA%\EasyHFP\config.json` (existing legacy `config.txt` files are migrated automatically) and open the main window.
 4. Click the main switch button to toggle between **Stereo (A2DP)** and **Hands-Free (HFP)**.
 5. Optionally press **`Ctrl+Alt+H`** from anywhere, or toggle modes from the system tray icon.
 
 ### Important notes
 
+- **Windows Start search vs. Start with Windows:** Adding EasyHFP to Windows Start search creates a per-user shortcut at `%APPDATA%\Microsoft\Windows\Start Menu\Programs\EasyHFP.lnk` so you can launch EasyHFP from the Start menu or Windows search bar. It is completely independent of *Start with Windows*, which registers `"<path>\EasyHFP.exe" --tray` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. If you move the portable `EasyHFP.exe` to a new folder, EasyHFP automatically updates enabled shortcut and startup paths on next launch.
 - **System tray:** When *Close to tray* is enabled, minimizing or closing the window keeps EasyHFP running quietly in the notification area. Left-clicking the tray icon restores the window.
 - **Bluetooth services:** Both **Audio Sink (A2DP)** and **Handsfree Telephony (HFP)** services must remain enabled for the headset in Windows so both playback and capture endpoints are available.
 - **Microphone permissions:** Because HFP is held active via a capture stream on the headset microphone, Windows *Privacy & security > Microphone* must allow desktop apps to access the microphone. The Windows taskbar microphone indicator is shown normally while HFP is held.

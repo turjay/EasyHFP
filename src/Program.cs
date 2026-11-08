@@ -39,6 +39,7 @@ namespace EasyHFP
             var parsed = CliParser.Parse(args);
 
             var configService = new ConfigurationService();
+            var shortcutService = new StartMenuShortcutService();
             var bluetoothService = new BluetoothService();
 
             if (parsed.Action == CliAction.Gui || parsed.Action == CliAction.Tray)
@@ -58,16 +59,62 @@ namespace EasyHFP
                     return 0;
                 }
 
-                bool startInTray = (parsed.Action == CliAction.Tray);
-                AppLogger.Info($"Starting EasyHFP in {(startInTray ? "Tray" : "GUI")} mode.");
-
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
 
                 using var profileController = new WindowsAudioProfileController();
-                using var mainForm = new MainForm(bluetoothService, configService, startInTray, profileController);
-                singleInstance.RegisterWakeupCallback(() => mainForm.RestoreFromTray());
+                var config = configService.LoadConfig();
+
+                OnboardingWizardForm? activeOnboarding = null;
+                MainForm? activeMainForm = null;
+
+                singleInstance.RegisterWakeupCallback(() =>
+                {
+                    if (activeOnboarding != null && !activeOnboarding.IsDisposed)
+                    {
+                        activeOnboarding.BringToFrontFromSecondaryInstance();
+                    }
+                    else if (activeMainForm != null && !activeMainForm.IsDisposed)
+                    {
+                        activeMainForm.RestoreFromTray();
+                    }
+                });
+
+                bool startInTray = (parsed.Action == CliAction.Tray);
+
+                if (!config.SetupCompleted)
+                {
+                    AppLogger.Info("First-run or uncompleted configuration detected; launching onboarding setup wizard.");
+                    using (var wizard = new OnboardingWizardForm(bluetoothService, configService, shortcutService, profileController, config))
+                    {
+                        activeOnboarding = wizard;
+                        var dialogResult = wizard.ShowDialog();
+                        activeOnboarding = null;
+
+                        if (dialogResult != DialogResult.OK)
+                        {
+                            AppLogger.Info("Onboarding wizard was cancelled; exiting without marking setup complete.");
+                            return 0;
+                        }
+                    }
+
+                    // Reload saved config and open the main window visibly right after onboarding completes
+                    config = configService.LoadConfig();
+                    startInTray = false;
+                }
+                else
+                {
+                    // Portable path maintenance: update stale Start Menu shortcut or Startup registry entry if moved
+                    shortcutService.RepairShortcutIfStale(config.AddToStartMenu);
+                    configService.RepairAutoStartIfStale(config.StartWithWindows);
+                }
+
+                AppLogger.Info($"Starting EasyHFP in {(startInTray ? "Tray" : "GUI")} mode.");
+
+                using var mainForm = new MainForm(bluetoothService, configService, startInTray, profileController, shortcutService);
+                activeMainForm = mainForm;
                 Application.Run(mainForm);
+                activeMainForm = null;
 
                 profileController.ReleaseAllHolds();
                 AppLogger.Info("EasyHFP exited cleanly.");
