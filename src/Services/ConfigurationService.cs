@@ -57,15 +57,21 @@ namespace EasyHFP.Services
             }
             else
             {
-                string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "EasyHFP");
+                string? envAppDataDir = Environment.GetEnvironmentVariable("EASYHFP_APPDATA_DIR");
+                string appDataDir = !string.IsNullOrWhiteSpace(envAppDataDir)
+                    ? envAppDataDir
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "EasyHFP");
                 _configFilePath = Path.Combine(appDataDir, "config.json");
                 _appDataLegacyConfigFilePath = Path.Combine(appDataDir, "config.txt");
-                _legacyConfigFilePath = legacyPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt");
+                _legacyConfigFilePath = legacyPath ?? (!string.IsNullOrWhiteSpace(envAppDataDir)
+                    ? string.Empty
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt"));
             }
 
-            _runRegistryKeyPath = string.IsNullOrWhiteSpace(runRegistryKeyPath)
-                ? DefaultRunRegistrySubKey
-                : runRegistryKeyPath;
+            string? envRunKey = Environment.GetEnvironmentVariable("EASYHFP_RUN_REGISTRY_KEY");
+            _runRegistryKeyPath = !string.IsNullOrWhiteSpace(runRegistryKeyPath)
+                ? runRegistryKeyPath
+                : (!string.IsNullOrWhiteSpace(envRunKey) ? envRunKey : DefaultRunRegistrySubKey);
             _customExecutablePath = customExecutablePath;
         }
 

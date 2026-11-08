@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using EasyHFP.Models;
 using EasyHFP.Services;
@@ -110,6 +112,104 @@ namespace EasyHFP.Tests
             Application.DoEvents();
 
             Assert.True(form.IsDisposed);
+        }
+
+        private sealed class FakeHoldTrackingProfileController : IAudioProfileController
+        {
+            public bool IsHoldingHfpStream { get; set; } = true;
+            public string? ActiveHoldDeviceMac { get; set; } = "112233445566";
+            public int ReleaseAllHoldsCount { get; private set; }
+            public int DisposeCount { get; private set; }
+
+#pragma warning disable CS0067
+            public event Action? ProfileStateChanged;
+#pragma warning restore CS0067
+
+            public HeadsetProfileSnapshot QueryProfileSnapshot(BtDeviceItem device) => new()
+            {
+                DeviceName = device.Name,
+                BluetoothMac = device.Mac,
+                IsBluetoothConnected = device.Connected,
+                IsRenderEndpointActive = true,
+                IsCaptureEndpointActive = true,
+                IsHeldByEasyHfp = IsHoldingHfpStream,
+                InferredMode = IsHoldingHfpStream ? AudioProfileMode.HfpHeldByEasyHfp : AudioProfileMode.A2dp
+            };
+
+            public Task<ProfileTransitionResult> SwitchToHfpAsync(BtDeviceItem device, CancellationToken cancellationToken = default)
+                => Task.FromResult(new ProfileTransitionResult { Success = true });
+
+            public Task<ProfileTransitionResult> SwitchToA2dpAsync(BtDeviceItem device, CancellationToken cancellationToken = default)
+                => Task.FromResult(new ProfileTransitionResult { Success = true });
+
+            public Task<ProfileTransitionResult> ToggleProfileAsync(BtDeviceItem device, CancellationToken cancellationToken = default)
+                => Task.FromResult(new ProfileTransitionResult { Success = true });
+
+            public void ReleaseAllHolds()
+            {
+                ReleaseAllHoldsCount++;
+                IsHoldingHfpStream = false;
+                ActiveHoldDeviceMac = null;
+            }
+
+            public void Dispose()
+            {
+                DisposeCount++;
+                ReleaseAllHolds();
+            }
+        }
+
+        [Fact]
+        public void MainForm_ExitWhileHoldingHfpStream_ReleasesWasapiHoldCleanly()
+        {
+            string configPath = Path.Combine(_tempDir, "config_hold.json");
+            string shortcutPath = Path.Combine(_tempDir, "EasyHFP_hold.lnk");
+            var configService = new ConfigurationService(configPath);
+            var shortcutService = new StartMenuShortcutService(shortcutPath);
+            var config = configService.LoadConfig();
+            config.SetupCompleted = true;
+            config.MinimizeToTray = true;
+            config.ShowNotifications = false;
+            config.Hotkey = "";
+            configService.SaveConfig(config);
+
+            var fakeBt = new FakeBluetoothService();
+            fakeBt.Devices.Add(new BtDeviceItem
+            {
+                Name = "Test Headset",
+                Mac = "112233445566",
+                MacUlong = 0x112233445566,
+                Connected = true,
+                HfpState = HfpServiceState.Enabled
+            });
+
+            var holdController = new FakeHoldTrackingProfileController();
+            using var form = new MainForm(fakeBt, configService, startInTray: false, profileController: holdController, shortcutService: shortcutService);
+            form.Show();
+            Application.DoEvents();
+
+            Assert.True(holdController.IsHoldingHfpStream);
+
+            form.ExitApplication();
+            Application.DoEvents();
+
+            Assert.False(holdController.IsHoldingHfpStream);
+            Assert.Null(holdController.ActiveHoldDeviceMac);
+            Assert.True(holdController.ReleaseAllHoldsCount >= 1);
+        }
+
+        [Fact]
+        public void AssemblyMetadata_MatchesExpectedReleaseVersionAndProduct()
+        {
+            var asm = typeof(MainForm).Assembly;
+            var productAttr = asm.GetCustomAttribute<AssemblyProductAttribute>();
+            var infoVerAttr = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+
+            Assert.NotNull(productAttr);
+            Assert.Equal("EasyHFP", productAttr!.Product);
+
+            Assert.NotNull(infoVerAttr);
+            Assert.StartsWith("0.1.0-beta.1", infoVerAttr!.InformationalVersion, StringComparison.Ordinal);
         }
 
         [Fact]

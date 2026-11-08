@@ -7,6 +7,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationIcon>Resources\easyhfp.ico</ApplicationIcon>
+
+    <!-- Product & Version Metadata -->
+    <AssemblyName>EasyHFP</AssemblyName>
+    <RootNamespace>EasyHFP</RootNamespace>
+    <Product>EasyHFP</Product>
+    <AssemblyTitle>EasyHFP</AssemblyTitle>
+    <Description>Lightweight Windows 11 utility for switching Bluetooth Classic headsets between A2DP and HFP audio modes.</Description>
+    <Company>EasyHFP Contributors</Company>
+    <Copyright>Copyright (c) EasyHFP Contributors (MIT License)</Copyright>
+    <Version>0.1.0-beta.1</Version>
+    <InformationalVersion>0.1.0-beta.1</InformationalVersion>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.1</FileVersion>
+
+    <!-- Portable Single-File Release Configuration -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <Deterministic>true</Deterministic>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
+    <PathMap Condition="'$(Configuration)' == 'Release'">$(MSBuildProjectDirectory)=/src</PathMap>
   </PropertyGroup>
 
   <ItemGroup>

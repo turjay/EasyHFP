@@ -46,9 +46,12 @@ namespace EasyHFP.Services
                     return Path.Combine(Path.GetTempPath(), "EasyHFP_Tests", "easyhfp_test.log");
                 }
 
-                string appDataDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "EasyHFP");
+                string? envAppDataDir = Environment.GetEnvironmentVariable("EASYHFP_APPDATA_DIR");
+                string appDataDir = !string.IsNullOrWhiteSpace(envAppDataDir)
+                    ? envAppDataDir
+                    : Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "EasyHFP");
                 return Path.Combine(appDataDir, "easyhfp.log");
             }
             catch

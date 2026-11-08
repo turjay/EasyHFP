@@ -31,9 +31,14 @@ namespace EasyHFP.Services
 
         public StartMenuShortcutService(string? customShortcutFilePath = null, string? customExecutablePath = null)
         {
+            string? envShortcutPath = Environment.GetEnvironmentVariable("EASYHFP_STARTMENU_PATH");
             if (!string.IsNullOrWhiteSpace(customShortcutFilePath))
             {
                 _shortcutFilePath = customShortcutFilePath;
+            }
+            else if (!string.IsNullOrWhiteSpace(envShortcutPath))
+            {
+                _shortcutFilePath = envShortcutPath;
             }
             else
             {

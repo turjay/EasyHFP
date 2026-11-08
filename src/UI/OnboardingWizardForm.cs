@@ -66,6 +66,7 @@ namespace EasyHFP.UI
         public HeadsetProfileSnapshot? SelectedDeviceSnapshot => _selectedSnapshot;
         public ConfigData WorkingConfig => _workingConfig;
         public int WakeupCount { get; private set; }
+        public bool OnboardingCompleted { get; private set; }
         public Image? HeaderLogoImage => _logoPictureBox?.Image;
 
         public bool AddToStartMenuChecked
@@ -202,11 +203,11 @@ namespace EasyHFP.UI
                 Text = "Cancel",
                 Location = new Point(352, 332),
                 Size = new Size(80, 28),
-                UseVisualStyleBackColor = true,
-                DialogResult = DialogResult.Cancel
+                UseVisualStyleBackColor = true
             };
             _cancelButton.Click += (s, e) =>
             {
+                OnboardingCompleted = false;
                 DialogResult = DialogResult.Cancel;
                 Close();
             };
@@ -692,6 +693,7 @@ namespace EasyHFP.UI
             _configService.SaveConfig(_workingConfig);
             AppLogger.Info($"First-run onboarding completed (selectedDevice='{_workingConfig.DefaultName}' [{_workingConfig.DefaultMac}], startMenu={_workingConfig.AddToStartMenu}, autoStart={_workingConfig.StartWithWindows}).");
 
+            OnboardingCompleted = true;
             DialogResult = DialogResult.OK;
             Close();
             return true;

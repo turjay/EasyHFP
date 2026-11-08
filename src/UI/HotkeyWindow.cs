@@ -18,7 +18,11 @@ namespace EasyHFP.UI
 
         public HotkeyWindow(string hotkeyString)
         {
-            CreateHandle(new CreateParams());
+            var cp = new CreateParams
+            {
+                Parent = new IntPtr(-3) // HWND_MESSAGE: message-only window so it is never mistaken for the main window
+            };
+            CreateHandle(cp);
             RegisterFromConfig(hotkeyString);
         }
 

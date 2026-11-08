@@ -18,10 +18,14 @@ namespace EasyHFP.Services
 
         public bool IsPrimaryInstance => _isPrimaryInstance;
 
-        public SingleInstanceCoordinator(string namePrefix = @"Local\EasyHFP")
+        public SingleInstanceCoordinator(string? namePrefix = null)
         {
-            string mutexName = $"{namePrefix}_SingleInstance_Mutex";
-            string eventName = $"{namePrefix}_ShowWindow_Event";
+            string resolvedPrefix = !string.IsNullOrWhiteSpace(namePrefix)
+                ? namePrefix
+                : (Environment.GetEnvironmentVariable("EASYHFP_SINGLE_INSTANCE_PREFIX") ?? @"Local\EasyHFP");
+
+            string mutexName = $"{resolvedPrefix}_SingleInstance_Mutex";
+            string eventName = $"{resolvedPrefix}_ShowWindow_Event";
 
             _instanceMutex = new Mutex(false, mutexName);
             _showWindowEvent = new EventWaitHandle(false, EventResetMode.AutoReset, eventName);

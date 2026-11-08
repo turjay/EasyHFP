@@ -88,10 +88,10 @@ namespace EasyHFP
                     using (var wizard = new OnboardingWizardForm(bluetoothService, configService, shortcutService, profileController, config))
                     {
                         activeOnboarding = wizard;
-                        var dialogResult = wizard.ShowDialog();
+                        Application.Run(wizard);
                         activeOnboarding = null;
 
-                        if (dialogResult != DialogResult.OK)
+                        if (!wizard.OnboardingCompleted)
                         {
                             AppLogger.Info("Onboarding wizard was cancelled; exiting without marking setup complete.");
                             return 0;
